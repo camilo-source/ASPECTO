@@ -1,6 +1,7 @@
 'use client'
 
 import { ThemeProvider as NextThemeProvider } from 'next-themes'
+import { SoundProvider } from '@/components/SoundProvider'
 
 export function Providers({ children }: { children: React.ReactNode }) {
     return (
@@ -10,7 +11,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
             enableSystem={false}
             disableTransitionOnChange
         >
-            {children}
+            <SoundProvider>
+                {children}
+            </SoundProvider>
         </NextThemeProvider>
     )
 }
