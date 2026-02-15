@@ -1,19 +1,16 @@
 'use client'
 
 import { ThemeProvider as NextThemeProvider } from 'next-themes'
-import { TamaguiProvider } from '@tamagui/core'
-import tamaguiConfig from '../../tamagui.config'
 
 export function Providers({ children }: { children: React.ReactNode }) {
     return (
         <NextThemeProvider
-            attribute="class"
+            attribute="data-theme"
             defaultTheme="dark"
-            enableSystem
+            enableSystem={false}
+            disableTransitionOnChange
         >
-            <TamaguiProvider config={tamaguiConfig} defaultTheme="dark">
-                {children}
-            </TamaguiProvider>
+            {children}
         </NextThemeProvider>
     )
 }
