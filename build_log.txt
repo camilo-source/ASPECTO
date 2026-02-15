@@ -1,0 +1,23 @@
+﻿⚠ Invalid next.config.ts options detected: 
+⚠     Unrecognized key(s) in object: 'turbo' at "experimental"
+⚠ See more info here: https://nextjs.org/docs/messages/invalid-next-config
+▲ Next.js 16.1.6 (Turbopack)
+- Experiments (use with caution):
+  ? turbo (invalid experimental key)
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 6.9s
+  Running TypeScript ...
+Failed to compile.
+System.Management.Automation.RemoteException
+./next.config.ts:7:5
+Type error: Object literal may only specify known properties, and 'turbo' does not exist in type 'ExperimentalConfig'.
+System.Management.Automation.RemoteException
+[0m [90m  5 |[39m   transpilePackages[33m:[39m [[32m'@tamagui/lucide-icons'[39m][33m,[39m
+ [90m  6 |[39m   experimental[33m:[39m {
+[31m[1m>[22m[39m[90m  7 |[39m     turbo[33m:[39m {
+ [90m    |[39m     [31m[1m^[22m[39m
+ [90m  8 |[39m       resolveAlias[33m:[39m {
+ [90m  9 |[39m         [32m'react-native'[39m[33m:[39m [32m'react-native-web'[39m[33m,[39m
+ [90m 10 |[39m         [32m'react-native-svg'[39m[33m:[39m [32m'@tamagui/react-native-svg'[39m[33m,[39m[0m
+Next.js build worker exited with code: 1 and signal: null

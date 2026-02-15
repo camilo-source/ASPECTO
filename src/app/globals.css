@@ -258,3 +258,53 @@
     transform: rotate(360deg) translateX(3px) rotate(-360deg);
   }
 }
+
+/* ═══ ACCESSIBILITY: Reduced Motion ═══ */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ═══ SMOOTH SCROLL ═══ */
+html {
+  scroll-behavior: smooth;
+}
+
+/* ═══ SELECTION ═══ */
+::selection {
+  background-color: rgba(52, 211, 153, 0.25);
+  color: #ffffff;
+}
+
+/* ═══ SCROLLBAR ═══ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 100px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ═══ FOCUS RING ═══ */
+:focus-visible {
+  outline: 2px solid #34d399;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
