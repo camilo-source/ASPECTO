@@ -385,7 +385,7 @@ const FeatureCard = memo(function FeatureCard({ icon, title, desc, accentColor, 
       >
         {icon}
       </div>
-      <h3 className="text-lg font-bold text-white mb-2 tracking-tight">{title}</h3>
+      <h3 className="text-lg font-bold text-[var(--text-primary)] text-emboss mb-2 tracking-tight">{title}</h3>
       <p className="text-sm leading-relaxed text-[var(--text-secondary)]">{desc}</p>
 
       {/* Hover highlight beam — follows mouse inside card */}
@@ -627,7 +627,7 @@ export default function Home() {
         <div className="sv-nav-inner glass-strong max-w-6xl mx-auto rounded-2xl px-6 py-3 flex items-center justify-between transition-all duration-500">
           <Link
             href="/"
-            className="text-white font-bold text-lg tracking-[-0.03em] hover:text-neon-emerald transition-colors duration-300"
+            className="text-[var(--text-primary)] font-bold text-lg tracking-[-0.03em] hover:text-neon-emerald transition-colors duration-300"
             onMouseEnter={tick}
           >
             SIN VUELTAS
@@ -665,7 +665,7 @@ export default function Home() {
           </div>
 
           {/* Title */}
-          <h1 className="text-6xl sm:text-7xl md:text-8xl font-bold tracking-[-0.06em] text-white mb-6 leading-[0.9]
+          <h1 className="text-6xl sm:text-7xl md:text-8xl font-bold tracking-[-0.06em] text-[var(--text-primary)] text-emboss mb-6 leading-[0.9]
             animate-[fadeUp_0.6s_ease-out_0.2s_both]">
             SIN VUELTAS
             <br />
@@ -696,8 +696,8 @@ export default function Home() {
             <MagneticButton
               href="/dashboard"
               onClickSound={ping}
-              className="px-10 py-4 border border-white/15 text-white bg-white/5 rounded-full text-lg font-medium
-                hover:bg-white/10 hover:border-white/25 backdrop-blur-xl cursor-pointer"
+              className="px-10 py-4 glass-neon text-[var(--text-primary)] rounded-full text-lg font-medium
+                hover:bg-white/10 backdrop-blur-xl cursor-pointer"
             >
               Dashboard Demo
             </MagneticButton>
@@ -724,7 +724,7 @@ export default function Home() {
               { value: 9, suffix: '', label: 'Tech Stacks', color: '#ec4899' },
             ].map((stat) => (
               <div key={stat.label} className="sv-stat-item opacity-0">
-                <p className="text-4xl md:text-5xl font-bold text-white mb-1"
+                <p className="text-4xl md:text-5xl font-bold text-[var(--text-primary)] text-emboss mb-1"
                   style={{ textShadow: `0 0 30px ${stat.color}40, 0 0 60px ${stat.color}15` }}>
                   <AnimatedNumber value={stat.value} suffix={stat.suffix} />
                 </p>
@@ -739,7 +739,7 @@ export default function Home() {
       <section className="relative z-10 py-24 px-6">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold tracking-[-0.04em] text-white mb-4">
+            <h2 className="text-4xl md:text-5xl font-bold tracking-[-0.04em] text-[var(--text-primary)] text-emboss mb-4">
               <TypewriterText text="Built for " delay={0} />
               <TypewriterText text="premium" className="text-iridescent" delay={0.3} />
               <TypewriterText text=" interfaces" delay={0.6} />
@@ -778,7 +778,7 @@ export default function Home() {
           <div ref={ctaRef} className="glass-strong rounded-[32px] p-12 md:p-16 relative overflow-hidden gradient-border-animated opacity-0">
             <div className="absolute inset-0 gradient-iridescent-subtle opacity-20 pointer-events-none" />
 
-            <h2 className="text-3xl md:text-4xl font-bold text-white tracking-[-0.03em] mb-4 relative z-10">
+            <h2 className="text-3xl md:text-4xl font-bold text-[var(--text-primary)] text-emboss tracking-[-0.03em] mb-4 relative z-10">
               Ready to explore the <span className="text-iridescent">void</span>?
             </h2>
             <p className="text-base mb-8 relative z-10 text-[var(--text-secondary)]">
@@ -797,8 +797,8 @@ export default function Home() {
               <MagneticButton
                 href="/dashboard"
                 onClickSound={ping}
-                className="px-8 py-3.5 border border-white/15 text-white rounded-full font-medium
-                  hover:bg-white/10 hover:border-white/25 cursor-pointer"
+                className="px-8 py-3.5 glass-neon text-[var(--text-primary)] rounded-full font-medium
+                  hover:bg-white/10 cursor-pointer"
               >
                 Dashboard
               </MagneticButton>
