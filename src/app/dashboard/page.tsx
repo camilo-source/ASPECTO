@@ -1,6 +1,10 @@
 'use client'
 
+import { useRef, useCallback, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import gsap from 'gsap'
+import { useSound } from '@/components/SoundProvider'
 
 const Icons = {
     chart: (
@@ -109,10 +113,101 @@ function Pipeline() {
 }
 
 export default function DashboardPage() {
+    const router = useRouter()
+    const containerRef = useRef<HTMLDivElement>(null)
+    const btnRef = useRef<HTMLButtonElement>(null)
+    const [vortexActive, setVortexActive] = useState(false)
+    const { resonance } = useSound()
+
+    const triggerVortex = useCallback(() => {
+        if (vortexActive || !btnRef.current || !containerRef.current) return
+        setVortexActive(true)
+        resonance()
+
+        const btn = btnRef.current
+        const container = containerRef.current
+        const btnRect = btn.getBoundingClientRect()
+        const btnCx = btnRect.left + btnRect.width / 2
+        const btnCy = btnRect.top + btnRect.height / 2
+
+        // Collect all vortex targets
+        const targets = container.querySelectorAll<HTMLElement>('.vortex-target')
+        const tl = gsap.timeline()
+
+        // Phase 1: Button pulse (anticipation)
+        tl.to(btn, {
+            scale: 1.15,
+            boxShadow: '0 0 60px rgba(52,211,153,0.8), 0 0 120px rgba(52,211,153,0.4)',
+            duration: 0.3,
+            ease: 'power2.out',
+        })
+
+        // Phase 2: Suck everything toward the button
+        targets.forEach((el) => {
+            const elRect = el.getBoundingClientRect()
+            const elCx = elRect.left + elRect.width / 2
+            const elCy = elRect.top + elRect.height / 2
+            const dx = btnCx - elCx
+            const dy = btnCy - elCy
+            const dist = Math.sqrt(dx * dx + dy * dy)
+            // Closer elements get sucked last (more dramatic)
+            const delay = Math.max(0, 0.05 + (1 - Math.min(dist / 1000, 1)) * 0.3)
+            const rotation = (Math.random() - 0.5) * 360
+
+            tl.to(el, {
+                x: dx,
+                y: dy,
+                scale: 0,
+                rotation,
+                opacity: 0,
+                duration: 0.6,
+                ease: 'power3.in',
+            }, delay)
+        })
+
+        // Phase 3: Button implodes
+        tl.to(btn, {
+            scale: 0,
+            opacity: 0,
+            duration: 0.3,
+            ease: 'power4.in',
+        }, 0.6)
+
+        // Phase 4: Singularity flash overlay
+        const overlay = container.querySelector<HTMLElement>('.vortex-overlay')
+        if (overlay) {
+            overlay.style.setProperty('--vortex-x', `${btnCx}px`)
+            overlay.style.setProperty('--vortex-y', `${btnCy}px`)
+            tl.to(overlay, {
+                opacity: 1,
+                scale: 3,
+                duration: 0.5,
+                ease: 'power2.in',
+            }, 0.5)
+        }
+
+        // Phase 5: Navigate after animation
+        tl.call(() => {
+            // Navigate to search creation (or reload for demo)
+            router.push('/dashboard')
+        }, [], '+=0.2')
+    }, [vortexActive, resonance, router])
+
     return (
-        <div className="space-y-8 animate-[fadeUp_0.4s_ease-out]">
+        <div ref={containerRef} className="relative space-y-8 animate-[fadeUp_0.4s_ease-out]">
+            {/* ── Vortex Singularity Overlay ── */}
+            <div className="vortex-overlay fixed inset-0 z-50 pointer-events-none opacity-0"
+                style={{
+                    background: `radial-gradient(circle at var(--vortex-x, 50%) var(--vortex-y, 50%), 
+                        rgba(52,211,153,0.3) 0%, 
+                        rgba(52,211,153,0.1) 10%, 
+                        rgba(0,0,0,0.95) 40%, 
+                        rgba(0,0,0,1) 70%)`,
+                    transformOrigin: 'var(--vortex-x, 50%) var(--vortex-y, 50%)',
+                }} />
+
             {/* ── Header ── */}
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between vortex-target">
                 <div>
                     <h1 className="text-3xl md:text-4xl font-bold text-white tracking-[-0.03em]">Dashboard</h1>
                     <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)' }}>Welcome to the Void. Your recruitment command center.</p>
@@ -124,10 +219,14 @@ export default function DashboardPage() {
                         style={{ color: 'var(--text-secondary)' }}>
                         {Icons.sparkles} Component Lab
                     </Link>
-                    <button className="px-5 py-2.5 bg-neon-emerald text-void text-sm font-bold rounded-xl cursor-pointer
+                    <button
+                        ref={btnRef}
+                        onClick={triggerVortex}
+                        className={`px-5 py-2.5 bg-neon-emerald text-void text-sm font-bold rounded-xl cursor-pointer
             shadow-[0_0_20px_rgba(52,211,153,0.3)]
             hover:shadow-[0_0_30px_rgba(52,211,153,0.5)] hover:scale-105
-            active:scale-[0.97] transition-all duration-200 flex items-center gap-1.5">
+            active:scale-[0.97] transition-all duration-200 flex items-center gap-1.5
+            ${vortexActive ? 'pointer-events-none' : ''}`}>
                         New Search {Icons.arrow}
                     </button>
                 </div>
@@ -135,16 +234,16 @@ export default function DashboardPage() {
 
             {/* ── Stats Grid ── */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                <StatCard icon={Icons.search} label="Active Searches" value="24" change="+12% this week" accentRgb="52,211,153" accentColor="#34d399" />
-                <StatCard icon={Icons.users} label="Candidates" value="1,847" change="+284 new" accentRgb="6,182,212" accentColor="#06b6d4" />
-                <StatCard icon={Icons.sparkles} label="AI Match Score" value="98%" change="Excellent" accentRgb="139,92,246" accentColor="#8b5cf6" />
-                <StatCard icon={Icons.calendar} label="Interviews" value="8" change="3 today" accentRgb="236,72,153" accentColor="#ec4899" />
+                <div className="vortex-target"><StatCard icon={Icons.search} label="Active Searches" value="24" change="+12% this week" accentRgb="52,211,153" accentColor="#34d399" /></div>
+                <div className="vortex-target"><StatCard icon={Icons.users} label="Candidates" value="1,847" change="+284 new" accentRgb="6,182,212" accentColor="#06b6d4" /></div>
+                <div className="vortex-target"><StatCard icon={Icons.sparkles} label="AI Match Score" value="98%" change="Excellent" accentRgb="139,92,246" accentColor="#8b5cf6" /></div>
+                <div className="vortex-target"><StatCard icon={Icons.calendar} label="Interviews" value="8" change="3 today" accentRgb="236,72,153" accentColor="#ec4899" /></div>
             </div>
 
             {/* ── Two Column ── */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
                 {/* Pipeline */}
-                <div className="lg:col-span-3 glass-strong rounded-3xl p-7" style={{ boxShadow: 'var(--shadow-ambient)' }}>
+                <div className="lg:col-span-3 glass-strong rounded-3xl p-7 vortex-target" style={{ boxShadow: 'var(--shadow-ambient)' }}>
                     <div className="flex items-center justify-between mb-6">
                         <div>
                             <h2 className="text-xl font-bold text-white tracking-tight">Hiring Pipeline</h2>
@@ -183,7 +282,7 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Activity Feed */}
-                <div className="lg:col-span-2 glass-strong rounded-3xl p-7" style={{ boxShadow: 'var(--shadow-ambient)' }}>
+                <div className="lg:col-span-2 glass-strong rounded-3xl p-7 vortex-target" style={{ boxShadow: 'var(--shadow-ambient)' }}>
                     <h2 className="text-xl font-bold text-white tracking-tight mb-1">Recent Activity</h2>
                     <p className="text-xs mb-5" style={{ color: 'var(--text-tertiary)' }}>Latest updates from your pipeline</p>
 
@@ -221,7 +320,7 @@ export default function DashboardPage() {
             </div>
 
             {/* ── Top Candidates ── */}
-            <div className="glass-strong rounded-3xl p-7" style={{ boxShadow: 'var(--shadow-ambient)' }}>
+            <div className="glass-strong rounded-3xl p-7 vortex-target" style={{ boxShadow: 'var(--shadow-ambient)' }}>
                 <div className="flex items-center justify-between mb-6">
                     <div>
                         <h2 className="text-xl font-bold text-white tracking-tight">Top AI Matches</h2>
