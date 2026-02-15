@@ -1,30 +1,42 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, memo, useMemo } from 'react'
 import { useSound } from '@/components/SoundProvider'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 
 gsap.registerPlugin(ScrollTrigger)
 
+/* ──────────────────────────────────────────────────────────
+   UTILS
+   ────────────────────────────────────────────────────────── */
+function debounce<T extends (...args: unknown[]) => void>(fn: T, ms: number): T {
+  let id: ReturnType<typeof setTimeout>
+  return ((...args: unknown[]) => { clearTimeout(id); id = setTimeout(() => fn(...args), ms) }) as T
+}
+
+const isMobile = () => typeof window !== 'undefined' && window.innerWidth < 768
+const prefersReduced = () =>
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
 /* ══════════════════════════════════════════════════════════
-   SCROLL PROGRESS BAR — Iridescent glow bar at top of page
+   SCROLL PROGRESS BAR — Iridescent glow at page top
    ══════════════════════════════════════════════════════════ */
-function ScrollProgress() {
+const ScrollProgress = memo(function ScrollProgress() {
   const barRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    let ticking = false
     const update = () => {
       if (!barRef.current) return
-      const scrollTop = window.scrollY
-      const docHeight = document.documentElement.scrollHeight - window.innerHeight
-      const progress = docHeight > 0 ? scrollTop / docHeight : 0
-      barRef.current.style.transform = `scaleX(${progress})`
+      const progress = document.documentElement.scrollHeight - window.innerHeight
+      barRef.current.style.transform = `scaleX(${progress > 0 ? window.scrollY / progress : 0})`
+      ticking = false
     }
-
-    window.addEventListener('scroll', update, { passive: true })
-    return () => window.removeEventListener('scroll', update)
+    const onScroll = () => { if (!ticking) { ticking = true; requestAnimationFrame(update) } }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
   return (
@@ -40,131 +52,141 @@ function ScrollProgress() {
       />
     </div>
   )
-}
+})
 
 /* ══════════════════════════════════════════════════════════
-   PARTICLE FIELD — Network of emerald/purple/cyan particles
+   PARTICLE FIELD — Adaptive particle network
    ══════════════════════════════════════════════════════════ */
-function ParticleField() {
+const ParticleField = memo(function ParticleField() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (prefersReducedMotion) return
+    if (!canvas || prefersReduced()) return
+    const ctx2d = canvas.getContext('2d', { alpha: true })
+    if (!ctx2d) return
 
     let animationId: number
-    const dpr = window.devicePixelRatio || 1
+    const dpr = Math.min(window.devicePixelRatio || 1, 2) // cap DPR for perf
     let mouseX = -1000, mouseY = -1000
+    let w = window.innerWidth, h = window.innerHeight
 
     const resize = () => {
-      canvas.width = window.innerWidth * dpr
-      canvas.height = window.innerHeight * dpr
-      ctx.scale(dpr, dpr)
-      canvas.style.width = window.innerWidth + 'px'
-      canvas.style.height = window.innerHeight + 'px'
+      w = window.innerWidth; h = window.innerHeight
+      canvas.width = w * dpr; canvas.height = h * dpr
+      ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0)
+      canvas.style.width = w + 'px'; canvas.style.height = h + 'px'
     }
     resize()
-    window.addEventListener('resize', resize)
+    const debouncedResize = debounce(resize, 150)
+    window.addEventListener('resize', debouncedResize)
 
-    // Track mouse for particle attraction
     const onMouse = (e: MouseEvent) => { mouseX = e.clientX; mouseY = e.clientY }
-    window.addEventListener('mousemove', onMouse)
+    window.addEventListener('mousemove', onMouse, { passive: true })
+
+    // Adaptive count: fewer particles on mobile
+    const COUNT = isMobile() ? 40 : 70
+    const CONNECT_DIST = isMobile() ? 100 : 140
+    const HUES = [155, 185, 260, 330] // emerald, cyan, purple, pink
 
     type Particle = { x: number; y: number; vx: number; vy: number; r: number; alpha: number; hue: number; baseAlpha: number }
     const particles: Particle[] = []
-    for (let i = 0; i < 80; i++) {
-      const baseAlpha = Math.random() * 0.3 + 0.08
+    for (let i = 0; i < COUNT; i++) {
+      const baseAlpha = Math.random() * 0.25 + 0.08
       particles.push({
-        x: Math.random() * window.innerWidth,
-        y: Math.random() * window.innerHeight,
-        vx: (Math.random() - 0.5) * 0.2,
-        vy: (Math.random() - 0.5) * 0.2,
-        r: Math.random() * 2.5 + 0.5,
-        alpha: baseAlpha,
-        baseAlpha,
-        hue: [155, 185, 260, 330][Math.floor(Math.random() * 4)], // emerald, cyan, purple, pink
+        x: Math.random() * w, y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 0.15, vy: (Math.random() - 0.5) * 0.15,
+        r: Math.random() * 2 + 0.5, alpha: baseAlpha, baseAlpha,
+        hue: HUES[Math.floor(Math.random() * 4)],
       })
     }
 
+    // Spatial grid for O(n) connection checking (replaces O(n²))
+    const CELL = CONNECT_DIST
+    const grid = new Map<string, number[]>()
+    const cellKey = (cx: number, cy: number) => `${cx},${cy}`
+
     const draw = () => {
-      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight)
-      for (const p of particles) {
-        // Mouse attraction — particles gently gravitate toward cursor
-        const dxm = mouseX - p.x
-        const dym = mouseY - p.y
+      ctx2d.clearRect(0, 0, w, h)
+      grid.clear()
+
+      // Update + draw particles + populate grid
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i]
+        const dxm = mouseX - p.x, dym = mouseY - p.y
         const distMouse = Math.sqrt(dxm * dxm + dym * dym)
-        if (distMouse < 300) {
-          const force = (300 - distMouse) / 300 * 0.003
-          p.vx += dxm * force
-          p.vy += dym * force
-          // Brighten near cursor
-          p.alpha = p.baseAlpha + (1 - distMouse / 300) * 0.3
+        if (distMouse < 280) {
+          const force = (280 - distMouse) / 280 * 0.002
+          p.vx += dxm * force; p.vy += dym * force
+          p.alpha = p.baseAlpha + (1 - distMouse / 280) * 0.35
         } else {
           p.alpha += (p.baseAlpha - p.alpha) * 0.05
         }
+        p.vx *= 0.99; p.vy *= 0.99
+        p.x += p.vx; p.y += p.vy
+        if (p.x < -10) p.x = w + 10; if (p.x > w + 10) p.x = -10
+        if (p.y < -10) p.y = h + 10; if (p.y > h + 10) p.y = -10
 
-        // Damping
-        p.vx *= 0.99
-        p.vy *= 0.99
-        p.x += p.vx
-        p.y += p.vy
+        ctx2d.beginPath()
+        ctx2d.arc(p.x, p.y, p.r, 0, Math.PI * 2)
+        ctx2d.fillStyle = `hsla(${p.hue}, 80%, 65%, ${p.alpha})`
+        ctx2d.fill()
 
-        // Wrap
-        if (p.x < -10) p.x = window.innerWidth + 10
-        if (p.x > window.innerWidth + 10) p.x = -10
-        if (p.y < -10) p.y = window.innerHeight + 10
-        if (p.y > window.innerHeight + 10) p.y = -10
-
-        ctx.beginPath()
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
-        ctx.fillStyle = `hsla(${p.hue}, 80%, 65%, ${p.alpha})`
-        ctx.fill()
+        // Insert into grid
+        const cx = Math.floor(p.x / CELL), cy = Math.floor(p.y / CELL)
+        const key = cellKey(cx, cy)
+        const arr = grid.get(key)
+        if (arr) arr.push(i); else grid.set(key, [i])
       }
-      // Connections
+
+      // Connections using spatial grid — O(n) average
+      ctx2d.lineWidth = 0.4
       for (let i = 0; i < particles.length; i++) {
-        for (let j = i + 1; j < particles.length; j++) {
-          const dx = particles[i].x - particles[j].x
-          const dy = particles[i].y - particles[j].y
-          const dist = Math.sqrt(dx * dx + dy * dy)
-          if (dist < 140) {
-            const mixHue = (particles[i].hue + particles[j].hue) / 2
-            ctx.beginPath()
-            ctx.moveTo(particles[i].x, particles[i].y)
-            ctx.lineTo(particles[j].x, particles[j].y)
-            ctx.strokeStyle = `hsla(${mixHue}, 60%, 55%, ${0.06 * (1 - dist / 140)})`
-            ctx.lineWidth = 0.5
-            ctx.stroke()
+        const pi = particles[i]
+        const cx = Math.floor(pi.x / CELL), cy = Math.floor(pi.y / CELL)
+        for (let nx = cx - 1; nx <= cx + 1; nx++) {
+          for (let ny = cy - 1; ny <= cy + 1; ny++) {
+            const neighbors = grid.get(cellKey(nx, ny))
+            if (!neighbors) continue
+            for (const j of neighbors) {
+              if (j <= i) continue
+              const pj = particles[j]
+              const dx = pi.x - pj.x, dy = pi.y - pj.y
+              const dist = Math.sqrt(dx * dx + dy * dy)
+              if (dist < CONNECT_DIST) {
+                const mixHue = (pi.hue + pj.hue) / 2
+                ctx2d.beginPath()
+                ctx2d.moveTo(pi.x, pi.y); ctx2d.lineTo(pj.x, pj.y)
+                ctx2d.strokeStyle = `hsla(${mixHue}, 60%, 55%, ${0.06 * (1 - dist / CONNECT_DIST)})`
+                ctx2d.stroke()
+              }
+            }
           }
         }
       }
+
       animationId = requestAnimationFrame(draw)
     }
     draw()
 
     return () => {
       cancelAnimationFrame(animationId)
-      window.removeEventListener('resize', resize)
+      window.removeEventListener('resize', debouncedResize)
       window.removeEventListener('mousemove', onMouse)
     }
   }, [])
 
-  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" />
-}
+  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" aria-hidden="true" />
+})
 
 /* ══════════════════════════════════════════════════════════
-   MOUSE GLOW — Radial spotlight that follows cursor
+   MOUSE GLOW — Lerped radial spotlight
    ══════════════════════════════════════════════════════════ */
-function MouseGlow() {
+const MouseGlow = memo(function MouseGlow() {
   const glowRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (prefersReducedMotion) return
+    if (prefersReduced() || isMobile()) return
 
     let rafId: number
     let targetX = 0, targetY = 0, currentX = 0, currentY = 0
@@ -180,40 +202,38 @@ function MouseGlow() {
       rafId = requestAnimationFrame(animate)
     }
 
-    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('mousemove', handleMove, { passive: true })
     animate()
-
     return () => { window.removeEventListener('mousemove', handleMove); cancelAnimationFrame(rafId) }
   }, [])
 
-  return <div ref={glowRef} className="fixed inset-0 pointer-events-none z-[2]" />
-}
+  return <div ref={glowRef} className="fixed inset-0 pointer-events-none z-[2]" aria-hidden="true" />
+})
 
 /* ══════════════════════════════════════════════════════════
-   TYPEWRITER TEXT — Letters reveal one by one
+   TYPEWRITER TEXT — Scroll-triggered letter-by-letter reveal
    ══════════════════════════════════════════════════════════ */
-function TypewriterText({ text, className = '', delay = 0 }: { text: string; className?: string; delay?: number }) {
+const TypewriterText = memo(function TypewriterText({ text, className = '', delay = 0 }: {
+  text: string; className?: string; delay?: number
+}) {
   const ref = useRef<HTMLSpanElement>(null)
   const [revealed, setRevealed] = useState(false)
 
   useEffect(() => {
     const el = ref.current
     if (!el) return
-
     const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting && !revealed) {
-        setRevealed(true)
-        observer.disconnect()
-      }
+      if (entry.isIntersecting) { setRevealed(true); observer.disconnect() }
     }, { threshold: 0.5 })
-
     observer.observe(el)
     return () => observer.disconnect()
-  }, [revealed])
+  }, [])
+
+  const chars = useMemo(() => text.split(''), [text])
 
   return (
     <span ref={ref} className={className}>
-      {text.split('').map((char, i) => (
+      {chars.map((char, i) => (
         <span
           key={i}
           style={{
@@ -229,12 +249,12 @@ function TypewriterText({ text, className = '', delay = 0 }: { text: string; cla
       ))}
     </span>
   )
-}
+})
 
 /* ══════════════════════════════════════════════════════════
-   MAGNETIC BUTTON — Pulls toward cursor when near
+   MAGNETIC BUTTON — Cursor attraction + spring press
    ══════════════════════════════════════════════════════════ */
-function MagneticButton({ children, href, className = '', onClickSound }: {
+const MagneticButton = memo(function MagneticButton({ children, href, className = '', onClickSound }: {
   children: React.ReactNode; href: string; className?: string; onClickSound?: () => void
 }) {
   const ref = useRef<HTMLAnchorElement>(null)
@@ -243,63 +263,54 @@ function MagneticButton({ children, href, className = '', onClickSound }: {
     const el = ref.current
     if (!el) return
     const rect = el.getBoundingClientRect()
-    const centerX = rect.left + rect.width / 2
-    const centerY = rect.top + rect.height / 2
-    const deltaX = (e.clientX - centerX) * 0.15
-    const deltaY = (e.clientY - centerY) * 0.15
+    const deltaX = (e.clientX - (rect.left + rect.width / 2)) * 0.15
+    const deltaY = (e.clientY - (rect.top + rect.height / 2)) * 0.15
     el.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(1.04)`
   }, [])
 
   const handleMouseLeave = useCallback(() => {
-    const el = ref.current
-    if (!el) return
-    el.style.transform = ''
+    if (ref.current) ref.current.style.transform = ''
   }, [])
 
   const handleMouseDown = useCallback(() => {
-    const el = ref.current
-    if (!el) return
-    el.style.transform = 'scale(0.95)'
+    if (ref.current) ref.current.style.transform = 'scale(0.95)'
     onClickSound?.()
   }, [onClickSound])
 
   const handleMouseUp = useCallback(() => {
-    const el = ref.current
-    if (!el) return
-    el.style.transform = ''
+    if (ref.current) ref.current.style.transform = ''
   }, [])
 
   return (
     <Link
-      ref={ref}
-      href={href}
-      className={className}
-      style={{ transitionTimingFunction: 'var(--ease-spring)', transition: 'transform 0.4s var(--ease-spring), box-shadow 0.3s ease' }}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      onMouseDown={handleMouseDown}
-      onMouseUp={handleMouseUp}
+      ref={ref} href={href} className={className}
+      style={{ transition: 'transform 0.4s var(--ease-spring), box-shadow 0.3s ease' }}
+      onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}
+      onMouseDown={handleMouseDown} onMouseUp={handleMouseUp}
     >
       {children}
     </Link>
   )
-}
+})
 
 /* ══════════════════════════════════════════════════════════
-   ANIMATED NUMBER — Scroll-triggered count-up
+   ANIMATED NUMBER — Count-up with easing
    ══════════════════════════════════════════════════════════ */
-function AnimatedNumber({ value, suffix = '' }: { value: number; suffix?: string }) {
+const AnimatedNumber = memo(function AnimatedNumber({ value, suffix = '' }: { value: number; suffix?: string }) {
   const [display, setDisplay] = useState(0)
   const ref = useRef<HTMLSpanElement>(null)
+  const hasAnimated = useRef(false)
 
   useEffect(() => {
+    const el = ref.current
+    if (!el) return
     const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) {
+      if (entry.isIntersecting && !hasAnimated.current) {
+        hasAnimated.current = true
         const duration = 1400
         const startTime = performance.now()
         const tick = (now: number) => {
-          const elapsed = now - startTime
-          const progress = Math.min(elapsed / duration, 1)
+          const progress = Math.min((now - startTime) / duration, 1)
           const eased = 1 - Math.pow(1 - progress, 4)
           setDisplay(Math.round(eased * value))
           if (progress < 1) requestAnimationFrame(tick)
@@ -308,7 +319,7 @@ function AnimatedNumber({ value, suffix = '' }: { value: number; suffix?: string
         observer.disconnect()
       }
     }, { threshold: 0.5 })
-    if (ref.current) observer.observe(ref.current)
+    observer.observe(el)
     return () => observer.disconnect()
   }, [value])
 
@@ -317,72 +328,85 @@ function AnimatedNumber({ value, suffix = '' }: { value: number; suffix?: string
       {display.toLocaleString()}{suffix}
     </span>
   )
-}
+})
 
 /* ══════════════════════════════════════════════════════════
-   FEATURE CARD — Hover lift + accent glow + sound
+   3D TILT FEATURE CARD — Mouse perspective + hover glow + sound
    ══════════════════════════════════════════════════════════ */
-function FeatureCard({ icon, title, desc, accentColor, accentRgb, index }: {
+const FeatureCard = memo(function FeatureCard({ icon, title, desc, accentColor, accentRgb }: {
   icon: React.ReactNode; title: string; desc: string
   accentColor: string; accentRgb: string; index: number
 }) {
   const cardRef = useRef<HTMLDivElement>(null)
   const { pop } = useSound()
-  const hasPopped = useRef(false)
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const el = cardRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const x = (e.clientX - rect.left) / rect.width - 0.5
+    const y = (e.clientY - rect.top) / rect.height - 0.5
+    el.style.transform = `perspective(800px) rotateY(${x * 8}deg) rotateX(${-y * 8}deg) translateY(-4px) scale(1.02)`
+  }, [])
+
+  const handleMouseEnter = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    el.style.boxShadow = `0 0 50px rgba(${accentRgb}, 0.15), 0 20px 40px rgba(0,0,0,0.3)`
+    el.style.borderColor = `rgba(${accentRgb}, 0.3)`
+    pop()
+  }, [accentRgb, pop])
+
+  const handleMouseLeave = useCallback(() => {
+    const el = cardRef.current
+    if (!el) return
+    el.style.boxShadow = ''
+    el.style.borderColor = ''
+    el.style.transform = ''
+  }, [])
 
   return (
     <div
       ref={cardRef}
-      className="sv-feature-card glass rounded-3xl p-7 group cursor-default transition-all duration-500 opacity-0 translate-y-8"
+      className="sv-feature-card glass rounded-3xl p-7 group cursor-default
+        transition-[box-shadow,border-color] duration-500 opacity-0 translate-y-8"
       style={{ transitionTimingFunction: 'var(--ease-spring)' }}
-      onMouseEnter={(e) => {
-        const el = e.currentTarget
-        el.style.boxShadow = `0 0 50px rgba(${accentRgb}, 0.15), 0 8px 32px rgba(0,0,0,0.3)`
-        el.style.borderColor = `rgba(${accentRgb}, 0.3)`
-        el.style.transform = 'scale(1.03) translateY(-6px)'
-        if (!hasPopped.current) { pop(); hasPopped.current = true }
-        else { pop() }
-      }}
-      onMouseLeave={(e) => {
-        const el = e.currentTarget
-        el.style.boxShadow = ''
-        el.style.borderColor = ''
-        el.style.transform = ''
-        hasPopped.current = false
-      }}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
-      {/* RGB Glitch on card — subtle chromatic aberration on hover */}
-      <div className="relative">
-        <div
-          className="w-12 h-12 rounded-2xl flex items-center justify-center mb-5 transition-all duration-500
-            group-hover:shadow-[0_0_25px_var(--glow)]"
-          style={{
-            backgroundColor: `rgba(${accentRgb}, 0.1)`,
-            color: accentColor,
-            // @ts-ignore
-            '--glow': `rgba(${accentRgb}, 0.4)`,
-          } as React.CSSProperties}
-        >
-          {icon}
-        </div>
+      <div
+        className="w-12 h-12 rounded-2xl flex items-center justify-center mb-5 transition-all duration-500
+          group-hover:shadow-[0_0_25px_var(--glow)]"
+        style={{
+          backgroundColor: `rgba(${accentRgb}, 0.1)`,
+          color: accentColor,
+          '--glow': `rgba(${accentRgb}, 0.4)`,
+        } as React.CSSProperties}
+      >
+        {icon}
       </div>
       <h3 className="text-lg font-bold text-white mb-2 tracking-tight">{title}</h3>
       <p className="text-sm leading-relaxed text-[var(--text-secondary)]">{desc}</p>
+
+      {/* Hover highlight beam — follows mouse inside card */}
+      <div className="absolute inset-0 rounded-3xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+        style={{ background: `radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(${accentRgb}, 0.06), transparent 70%)` }}
+      />
     </div>
   )
-}
+})
 
 /* ══════════════════════════════════════════════════════════
-   SOUND TOGGLE BUTTON
+   SOUND TOGGLE — Animated icon
    ══════════════════════════════════════════════════════════ */
-function SoundToggle() {
-  const { isMuted, toggleMute, tick: playTick } = useSound()
+const SoundToggle = memo(function SoundToggle() {
+  const { isMuted, toggleMute, chime } = useSound()
 
   return (
     <button
-      onClick={() => { toggleMute(); if (isMuted) playTick() }}
+      onClick={() => { toggleMute(); if (isMuted) chime() }}
       className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300
-        hover:bg-white/5 text-[var(--text-tertiary)] hover:text-white"
+        hover:bg-white/5 text-[var(--text-tertiary)] hover:text-white active:scale-90"
       aria-label={isMuted ? 'Unmute sounds' : 'Mute sounds'}
       title={isMuted ? 'Turn on sounds' : 'Turn off sounds'}
     >
@@ -399,6 +423,33 @@ function SoundToggle() {
       )}
     </button>
   )
+})
+
+/* ══════════════════════════════════════════════════════════
+   HAPTIC RIPPLE — Click creates expanding ring at cursor
+   ══════════════════════════════════════════════════════════ */
+function HapticRipple() {
+  useEffect(() => {
+    if (prefersReduced()) return
+
+    const handleClick = (e: MouseEvent) => {
+      const ripple = document.createElement('div')
+      ripple.style.cssText = `
+        position: fixed; left: ${e.clientX}px; top: ${e.clientY}px;
+        width: 0; height: 0; border-radius: 50%;
+        border: 2px solid rgba(52,211,153,0.4);
+        pointer-events: none; z-index: 9998;
+        transform: translate(-50%, -50%);
+        animation: sv-ripple 0.6s ease-out forwards;
+      `
+      document.body.appendChild(ripple)
+      setTimeout(() => ripple.remove(), 700)
+    }
+    window.addEventListener('click', handleClick)
+    return () => window.removeEventListener('click', handleClick)
+  }, [])
+
+  return null
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -440,6 +491,11 @@ const Icons = {
       <path d="M3 8h10M9 4l4 4-4 4" />
     </svg>
   ),
+  sound: (
+    <svg width="18" height="18" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 1v4M11 17v4M7 5l-3 3H1v6h3l3 3V5z" /><path d="M15.54 6.46a5 5 0 0 1 0 7.07M18.36 3.64a9 9 0 0 1 0 12.73" />
+    </svg>
+  ),
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -447,18 +503,34 @@ const Icons = {
    ══════════════════════════════════════════════════════════ */
 export default function Home() {
   const { ping, tick, whoosh } = useSound()
-  const heroRef = useRef<HTMLDivElement>(null)
   const statsRef = useRef<HTMLDivElement>(null)
   const featuresRef = useRef<HTMLDivElement>(null)
   const ctaRef = useRef<HTMLDivElement>(null)
   const footerLineRef = useRef<HTMLDivElement>(null)
+  const navRef = useRef<HTMLElement>(null)
   const whooshedSections = useRef<Set<string>>(new Set())
+
+  // ── Nav blur-on-scroll: grows more opaque as user scrolls ──
+  useEffect(() => {
+    const nav = navRef.current
+    if (!nav) return
+    let ticking = false
+    const onScroll = () => {
+      if (ticking) return
+      ticking = true
+      requestAnimationFrame(() => {
+        const scrolled = window.scrollY > 50
+        nav.classList.toggle('sv-nav-scrolled', scrolled)
+        ticking = false
+      })
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   // ── GSAP Scroll Animations ──
   useEffect(() => {
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (prefersReducedMotion) {
-      // If reduced motion, just make everything visible
+    if (prefersReduced()) {
       document.querySelectorAll('.sv-feature-card').forEach(el => {
         (el as HTMLElement).style.opacity = '1';
         (el as HTMLElement).style.transform = 'none';
@@ -468,104 +540,70 @@ export default function Home() {
 
     const triggers: ScrollTrigger[] = []
 
-    // Stats section — staggered counter reveal
+    // Stats — staggered counter reveal
     if (statsRef.current) {
       const statItems = statsRef.current.querySelectorAll('.sv-stat-item')
-      triggers.push(
-        ScrollTrigger.create({
-          trigger: statsRef.current,
-          start: 'top 80%',
-          once: true,
-          onEnter: () => {
-            gsap.fromTo(statItems,
-              { opacity: 0, y: 30, scale: 0.9 },
-              { opacity: 1, y: 0, scale: 1, duration: 0.7, stagger: 0.12, ease: 'back.out(1.7)' }
-            )
-            if (!whooshedSections.current.has('stats')) {
-              whoosh()
-              whooshedSections.current.add('stats')
-            }
-          },
-        })
-      )
+      triggers.push(ScrollTrigger.create({
+        trigger: statsRef.current, start: 'top 80%', once: true,
+        onEnter: () => {
+          gsap.fromTo(statItems,
+            { opacity: 0, y: 30, scale: 0.9 },
+            { opacity: 1, y: 0, scale: 1, duration: 0.7, stagger: 0.12, ease: 'back.out(1.7)' }
+          )
+          if (!whooshedSections.current.has('stats')) { whoosh(); whooshedSections.current.add('stats') }
+        },
+      }))
     }
 
-    // Feature cards — cascade from left with stagger
+    // Feature cards — cascade with perspective
     if (featuresRef.current) {
       const cards = featuresRef.current.querySelectorAll('.sv-feature-card')
-      triggers.push(
-        ScrollTrigger.create({
-          trigger: featuresRef.current,
-          start: 'top 75%',
-          once: true,
-          onEnter: () => {
-            gsap.fromTo(cards,
-              { opacity: 0, y: 40, x: -20, rotateY: 5 },
-              {
-                opacity: 1, y: 0, x: 0, rotateY: 0,
-                duration: 0.8, stagger: 0.1, ease: 'power3.out',
-              }
-            )
-            if (!whooshedSections.current.has('features')) {
-              whoosh()
-              whooshedSections.current.add('features')
-            }
-          },
-        })
-      )
+      triggers.push(ScrollTrigger.create({
+        trigger: featuresRef.current, start: 'top 75%', once: true,
+        onEnter: () => {
+          gsap.fromTo(cards,
+            { opacity: 0, y: 40, x: -20, rotateY: 5 },
+            { opacity: 1, y: 0, x: 0, rotateY: 0, duration: 0.8, stagger: 0.1, ease: 'power3.out' }
+          )
+          if (!whooshedSections.current.has('features')) { whoosh(); whooshedSections.current.add('features') }
+        },
+      }))
     }
 
-    // CTA card — scale entrance with glow intensification
+    // CTA — elastic scale entrance
     if (ctaRef.current) {
-      triggers.push(
-        ScrollTrigger.create({
-          trigger: ctaRef.current,
-          start: 'top 70%',
-          once: true,
-          onEnter: () => {
-            gsap.fromTo(ctaRef.current,
-              { opacity: 0, scale: 0.92, y: 30 },
-              { opacity: 1, scale: 1, y: 0, duration: 1, ease: 'elastic.out(1, 0.5)' }
-            )
-            if (!whooshedSections.current.has('cta')) {
-              whoosh()
-              whooshedSections.current.add('cta')
-            }
-          },
-        })
-      )
+      triggers.push(ScrollTrigger.create({
+        trigger: ctaRef.current, start: 'top 70%', once: true,
+        onEnter: () => {
+          gsap.fromTo(ctaRef.current,
+            { opacity: 0, scale: 0.92, y: 30 },
+            { opacity: 1, scale: 1, y: 0, duration: 1, ease: 'elastic.out(1, 0.5)' }
+          )
+          if (!whooshedSections.current.has('cta')) { whoosh(); whooshedSections.current.add('cta') }
+        },
+      }))
     }
 
-    // Footer gradient line — draw from left to right
+    // Footer gradient line draw
     if (footerLineRef.current) {
       gsap.set(footerLineRef.current, { scaleX: 0, transformOrigin: 'left center' })
-      triggers.push(
-        ScrollTrigger.create({
-          trigger: footerLineRef.current,
-          start: 'top 90%',
-          once: true,
-          onEnter: () => {
-            gsap.to(footerLineRef.current, { scaleX: 1, duration: 1.2, ease: 'power2.out' })
-          },
-        })
-      )
+      triggers.push(ScrollTrigger.create({
+        trigger: footerLineRef.current, start: 'top 90%', once: true,
+        onEnter: () => { gsap.to(footerLineRef.current, { scaleX: 1, duration: 1.2, ease: 'power2.out' }) },
+      }))
     }
 
-    // Parallax on ambient glows
-    triggers.push(
-      ScrollTrigger.create({
-        start: 'top top',
-        end: 'bottom bottom',
-        scrub: true,
-        onUpdate: (self) => {
-          const orbs = document.querySelectorAll('.sv-ambient-orb')
-          orbs.forEach((orb, i) => {
-            const speed = 0.3 + i * 0.1
-              ; (orb as HTMLElement).style.transform = `translateY(${self.progress * -200 * speed}px)`
-          })
-        },
-      })
-    )
+    // Parallax ambient orbs
+    triggers.push(ScrollTrigger.create({
+      start: 'top top', end: 'bottom bottom', scrub: true,
+      onUpdate: (self) => {
+        const orbs = document.querySelectorAll('.sv-ambient-orb')
+        orbs.forEach((orb, i) => {
+          const speed = 0.3 + i * 0.1
+            ; (orb as HTMLElement).style.transform = `translateY(${self.progress * -200 * speed}px)`
+        })
+      },
+    }))
 
     return () => { triggers.forEach(t => t.kill()) }
   }, [whoosh])
@@ -575,17 +613,18 @@ export default function Home() {
       <ScrollProgress />
       <ParticleField />
       <MouseGlow />
+      <HapticRipple />
 
       {/* ═══ Ambient Glows (parallax) ═══ */}
-      <div className="fixed inset-0 pointer-events-none z-[1]">
+      <div className="fixed inset-0 pointer-events-none z-[1]" aria-hidden="true">
         <div className="sv-ambient-orb absolute top-[-10%] left-[20%] w-[700px] h-[700px] bg-neon-emerald/[0.04] rounded-full blur-[160px] animate-[breathe_10s_ease-in-out_infinite]" />
         <div className="sv-ambient-orb absolute bottom-[-10%] right-[10%] w-[600px] h-[600px] bg-cosmic-purple/[0.06] rounded-full blur-[140px] animate-[breathe_12s_ease-in-out_infinite_3s]" />
         <div className="sv-ambient-orb absolute top-[50%] left-[60%] w-[400px] h-[400px] bg-cosmic-pink/[0.03] rounded-full blur-[120px] animate-[breathe_14s_ease-in-out_infinite_6s]" />
       </div>
 
-      {/* ═══ Floating Nav with Sound Toggle ═══ */}
-      <nav className="fixed top-5 left-5 right-5 z-50 animate-[slideDown_0.5s_ease-out]">
-        <div className="glass-strong max-w-6xl mx-auto rounded-2xl px-6 py-3 flex items-center justify-between">
+      {/* ═══ Floating Nav ═══ */}
+      <nav ref={navRef} className="fixed top-5 left-5 right-5 z-50 animate-[slideDown_0.5s_ease-out] transition-all duration-500">
+        <div className="sv-nav-inner glass-strong max-w-6xl mx-auto rounded-2xl px-6 py-3 flex items-center justify-between transition-all duration-500">
           <Link
             href="/"
             className="text-white font-bold text-lg tracking-[-0.03em] hover:text-neon-emerald transition-colors duration-300"
@@ -597,7 +636,7 @@ export default function Home() {
             <SoundToggle />
             <Link
               href="/components"
-              className="px-4 py-2 text-sm font-medium rounded-xl transition-all duration-300 hover:bg-white/5 text-[var(--text-secondary)]"
+              className="px-4 py-2 text-sm font-medium rounded-xl transition-all duration-300 hover:bg-white/5 text-[var(--text-secondary)] hover:text-white"
               onMouseEnter={tick}
             >
               Components
@@ -616,7 +655,7 @@ export default function Home() {
       </nav>
 
       {/* ═══ Hero Section ═══ */}
-      <section ref={heroRef} className="relative z-10 flex flex-col items-center justify-center min-h-screen px-6 pt-28 pb-20">
+      <section className="relative z-10 flex flex-col items-center justify-center min-h-screen px-6 pt-28 pb-20">
         <div className="text-center max-w-4xl mx-auto">
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full text-xs font-medium mb-8
@@ -641,7 +680,7 @@ export default function Home() {
             <em className="text-cosmic-purple">feel</em> alive.
           </p>
 
-          {/* CTA Buttons — Magnetic */}
+          {/* CTA Buttons */}
           <div className="flex gap-4 items-center justify-center flex-col sm:flex-row animate-[fadeUp_0.6s_ease-out_0.5s_both]">
             <MagneticButton
               href="/components"

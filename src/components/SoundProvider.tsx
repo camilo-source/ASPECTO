@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
-import { playPing, playTick, playPop, playWhoosh, playKnock } from '@/hooks/useSoundEngine'
+import { playPing, playTick, playPop, playWhoosh, playKnock, playChime } from '@/hooks/useSoundEngine'
 
 interface SoundContextType {
     isMuted: boolean
@@ -11,6 +11,7 @@ interface SoundContextType {
     pop: () => void
     whoosh: () => void
     knock: () => void
+    chime: () => void
 }
 
 const SoundContext = createContext<SoundContextType>({
@@ -21,6 +22,7 @@ const SoundContext = createContext<SoundContextType>({
     pop: () => { },
     whoosh: () => { },
     knock: () => { },
+    chime: () => { },
 })
 
 export function useSound() {
@@ -29,17 +31,14 @@ export function useSound() {
 
 export function SoundProvider({ children }: { children: React.ReactNode }) {
     const [isMuted, setIsMuted] = useState(false)
-    const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
+    const prefersReducedMotion = useRef(false)
     const initialized = useRef(false)
 
-    // Load mute state from localStorage
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const stored = localStorage.getItem('sv-sound-muted')
             if (stored === 'true') setIsMuted(true)
-            setPrefersReducedMotion(
-                window.matchMedia('(prefers-reduced-motion: reduce)').matches
-            )
+            prefersReducedMotion.current = window.matchMedia('(prefers-reduced-motion: reduce)').matches
             initialized.current = true
         }
     }, [])
@@ -52,18 +51,23 @@ export function SoundProvider({ children }: { children: React.ReactNode }) {
         })
     }, [])
 
-    const shouldPlay = useCallback(() => {
-        return !isMuted && !prefersReducedMotion && initialized.current
-    }, [isMuted, prefersReducedMotion])
+    // Use ref for muted state to avoid stale closures in callbacks
+    const mutedRef = useRef(isMuted)
+    mutedRef.current = isMuted
 
-    const ping = useCallback(() => { if (shouldPlay()) playPing() }, [shouldPlay])
-    const tick = useCallback(() => { if (shouldPlay()) playTick() }, [shouldPlay])
-    const pop = useCallback(() => { if (shouldPlay()) playPop() }, [shouldPlay])
-    const whoosh = useCallback(() => { if (shouldPlay()) playWhoosh() }, [shouldPlay])
-    const knock = useCallback(() => { if (shouldPlay()) playKnock() }, [shouldPlay])
+    const safePlay = useCallback((fn: () => void) => {
+        if (!mutedRef.current && !prefersReducedMotion.current && initialized.current) fn()
+    }, [])
+
+    const ping = useCallback(() => safePlay(playPing), [safePlay])
+    const tick = useCallback(() => safePlay(playTick), [safePlay])
+    const pop = useCallback(() => safePlay(playPop), [safePlay])
+    const whoosh = useCallback(() => safePlay(playWhoosh), [safePlay])
+    const knock = useCallback(() => safePlay(playKnock), [safePlay])
+    const chime = useCallback(() => safePlay(playChime), [safePlay])
 
     return (
-        <SoundContext.Provider value={{ isMuted, toggleMute, ping, tick, pop, whoosh, knock }}>
+        <SoundContext.Provider value={{ isMuted, toggleMute, ping, tick, pop, whoosh, knock, chime }}>
             {children}
         </SoundContext.Provider>
     )
