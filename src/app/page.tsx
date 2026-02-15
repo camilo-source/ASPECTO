@@ -254,10 +254,11 @@ const TypewriterText = memo(function TypewriterText({ text, className = '', dela
 /* ══════════════════════════════════════════════════════════
    MAGNETIC BUTTON — Cursor attraction + spring press
    ══════════════════════════════════════════════════════════ */
-const MagneticButton = memo(function MagneticButton({ children, href, className = '', onClickSound }: {
-  children: React.ReactNode; href: string; className?: string; onClickSound?: () => void
+const MagneticButton = memo(function MagneticButton({ children, href, className = '', onClickSound, onHoverSound }: {
+  children: React.ReactNode; href: string; className?: string; onClickSound?: () => void; onHoverSound?: () => void
 }) {
   const ref = useRef<HTMLAnchorElement>(null)
+  const hoverFired = useRef(false)
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     const el = ref.current
@@ -266,10 +267,12 @@ const MagneticButton = memo(function MagneticButton({ children, href, className 
     const deltaX = (e.clientX - (rect.left + rect.width / 2)) * 0.15
     const deltaY = (e.clientY - (rect.top + rect.height / 2)) * 0.15
     el.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(1.04)`
-  }, [])
+    if (!hoverFired.current && onHoverSound) { onHoverSound(); hoverFired.current = true }
+  }, [onHoverSound])
 
   const handleMouseLeave = useCallback(() => {
     if (ref.current) ref.current.style.transform = ''
+    hoverFired.current = false
   }, [])
 
   const handleMouseDown = useCallback(() => {
@@ -338,7 +341,7 @@ const FeatureCard = memo(function FeatureCard({ icon, title, desc, accentColor, 
   accentColor: string; accentRgb: string; index: number
 }) {
   const cardRef = useRef<HTMLDivElement>(null)
-  const { pop } = useSound()
+  const { glassTap } = useSound()
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const el = cardRef.current
@@ -353,8 +356,8 @@ const FeatureCard = memo(function FeatureCard({ icon, title, desc, accentColor, 
     const el = e.currentTarget
     el.style.boxShadow = `0 0 50px rgba(${accentRgb}, 0.15), 0 20px 40px rgba(0,0,0,0.3)`
     el.style.borderColor = `rgba(${accentRgb}, 0.3)`
-    pop()
-  }, [accentRgb, pop])
+    glassTap()
+  }, [accentRgb, glassTap])
 
   const handleMouseLeave = useCallback(() => {
     const el = cardRef.current
@@ -368,7 +371,7 @@ const FeatureCard = memo(function FeatureCard({ icon, title, desc, accentColor, 
     <div
       ref={cardRef}
       className="sv-feature-card glass rounded-3xl p-7 group cursor-default
-        transition-[box-shadow,border-color] duration-500 opacity-0 translate-y-8"
+        transition-[box-shadow,border-color] duration-300 opacity-0 translate-y-8"
       style={{ transitionTimingFunction: 'var(--ease-spring)' }}
       onMouseMove={handleMouseMove}
       onMouseEnter={handleMouseEnter}
@@ -502,7 +505,7 @@ const Icons = {
    HOME PAGE — THE IMMERSIVE EXPERIENCE
    ══════════════════════════════════════════════════════════ */
 export default function Home() {
-  const { ping, tick, whoosh } = useSound()
+  const { ping, tick, whoosh, shimmer, resonance, startAmbient } = useSound()
   const statsRef = useRef<HTMLDivElement>(null)
   const featuresRef = useRef<HTMLDivElement>(null)
   const ctaRef = useRef<HTMLDivElement>(null)
@@ -550,7 +553,7 @@ export default function Home() {
             { opacity: 0, y: 30, scale: 0.9 },
             { opacity: 1, y: 0, scale: 1, duration: 0.7, stagger: 0.12, ease: 'back.out(1.7)' }
           )
-          if (!whooshedSections.current.has('stats')) { whoosh(); whooshedSections.current.add('stats') }
+          if (!whooshedSections.current.has('stats')) { whoosh(); shimmer(); whooshedSections.current.add('stats') }
         },
       }))
     }
@@ -565,7 +568,7 @@ export default function Home() {
             { opacity: 0, y: 40, x: -20, rotateY: 5 },
             { opacity: 1, y: 0, x: 0, rotateY: 0, duration: 0.8, stagger: 0.1, ease: 'power3.out' }
           )
-          if (!whooshedSections.current.has('features')) { whoosh(); whooshedSections.current.add('features') }
+          if (!whooshedSections.current.has('features')) { shimmer(); whooshedSections.current.add('features') }
         },
       }))
     }
@@ -579,7 +582,7 @@ export default function Home() {
             { opacity: 0, scale: 0.92, y: 30 },
             { opacity: 1, scale: 1, y: 0, duration: 1, ease: 'elastic.out(1, 0.5)' }
           )
-          if (!whooshedSections.current.has('cta')) { whoosh(); whooshedSections.current.add('cta') }
+          if (!whooshedSections.current.has('cta')) { whoosh(); shimmer(); whooshedSections.current.add('cta') }
         },
       }))
     }
@@ -606,7 +609,7 @@ export default function Home() {
     }))
 
     return () => { triggers.forEach(t => t.kill()) }
-  }, [whoosh])
+  }, [whoosh, shimmer])
 
   return (
     <div className="relative min-h-screen bg-void overflow-hidden font-[family-name:var(--font-geist-sans)] film-grain">
@@ -684,13 +687,14 @@ export default function Home() {
           <div className="flex gap-4 items-center justify-center flex-col sm:flex-row animate-[fadeUp_0.6s_ease-out_0.5s_both]">
             <MagneticButton
               href="/components"
-              onClickSound={ping}
+              onClickSound={() => { ping(); startAmbient() }}
               className="group relative px-10 py-4 bg-neon-emerald text-void font-bold text-lg rounded-full cursor-pointer
                 shadow-[0_0_30px_rgba(52,211,153,0.4),0_0_80px_rgba(52,211,153,0.15)]
                 hover:shadow-[0_0_50px_rgba(52,211,153,0.6),0_0_100px_rgba(52,211,153,0.25)]"
+              onHoverSound={resonance}
             >
               <span className="relative z-10 flex items-center gap-2">Explore Components {Icons.arrow}</span>
-              <div className="absolute inset-0 bg-neon-emerald rounded-full opacity-0 group-hover:opacity-30 blur-2xl transition-opacity duration-500" />
+              <div className="absolute inset-0 bg-neon-emerald rounded-full opacity-0 group-hover:opacity-30 blur-2xl transition-opacity duration-300" />
             </MagneticButton>
 
             <MagneticButton

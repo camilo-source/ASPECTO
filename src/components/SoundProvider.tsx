@@ -1,7 +1,10 @@
 'use client'
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
-import { playPing, playTick, playPop, playWhoosh, playKnock, playChime } from '@/hooks/useSoundEngine'
+import {
+    playPing, playTick, playPop, playWhoosh, playKnock, playChime,
+    playShimmer, playGlassTap, playResonance, startAmbientDrone, stopAmbientDrone
+} from '@/hooks/useSoundEngine'
 
 interface SoundContextType {
     isMuted: boolean
@@ -12,6 +15,11 @@ interface SoundContextType {
     whoosh: () => void
     knock: () => void
     chime: () => void
+    shimmer: () => void
+    glassTap: () => void
+    resonance: () => void
+    startAmbient: () => void
+    stopAmbient: () => void
 }
 
 const SoundContext = createContext<SoundContextType>({
@@ -23,6 +31,11 @@ const SoundContext = createContext<SoundContextType>({
     whoosh: () => { },
     knock: () => { },
     chime: () => { },
+    shimmer: () => { },
+    glassTap: () => { },
+    resonance: () => { },
+    startAmbient: () => { },
+    stopAmbient: () => { },
 })
 
 export function useSound() {
@@ -47,6 +60,7 @@ export function SoundProvider({ children }: { children: React.ReactNode }) {
         setIsMuted(prev => {
             const next = !prev
             localStorage.setItem('sv-sound-muted', String(next))
+            if (next) stopAmbientDrone()
             return next
         })
     }, [])
@@ -65,9 +79,18 @@ export function SoundProvider({ children }: { children: React.ReactNode }) {
     const whoosh = useCallback(() => safePlay(playWhoosh), [safePlay])
     const knock = useCallback(() => safePlay(playKnock), [safePlay])
     const chime = useCallback(() => safePlay(playChime), [safePlay])
+    const shimmer = useCallback(() => safePlay(playShimmer), [safePlay])
+    const glassTap = useCallback(() => safePlay(playGlassTap), [safePlay])
+    const resonance = useCallback(() => safePlay(playResonance), [safePlay])
+    const startAmbient = useCallback(() => safePlay(startAmbientDrone), [safePlay])
+    const stopAmbient = useCallback(() => stopAmbientDrone(), [])
 
     return (
-        <SoundContext.Provider value={{ isMuted, toggleMute, ping, tick, pop, whoosh, knock, chime }}>
+        <SoundContext.Provider value={{
+            isMuted, toggleMute,
+            ping, tick, pop, whoosh, knock, chime,
+            shimmer, glassTap, resonance, startAmbient, stopAmbient
+        }}>
             {children}
         </SoundContext.Provider>
     )

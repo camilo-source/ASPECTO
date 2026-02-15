@@ -106,8 +106,10 @@
   mask-composite: exclude;
   animation: neon-border-rotate 6s linear infinite;
   opacity: var(--neon-border-opacity, 0.3);
+  transition: opacity 0.3s ease;
   pointer-events: none;
   z-index: 0;
+  will-change: opacity;
 }
 
 .glass:hover::before {
@@ -144,10 +146,12 @@
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
-  animation: neon-border-rotate 4s linear infinite;
+  animation: neon-border-rotate 4s linear infinite, neon-breathe 3s ease-in-out infinite;
   opacity: var(--neon-border-opacity, 0.45);
+  transition: opacity 0.3s ease;
   pointer-events: none;
   z-index: 0;
+  will-change: opacity;
 }
 
 .glass-strong:hover::before {
@@ -185,10 +189,12 @@
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
-  animation: neon-border-rotate 3s linear infinite;
+  animation: neon-border-rotate 3s linear infinite, neon-breathe 2s ease-in-out infinite;
   opacity: 0.7;
+  transition: opacity 0.2s ease;
   pointer-events: none;
   z-index: 0;
+  will-change: opacity;
 }
 
 .glass-neon:hover::before {
@@ -224,7 +230,7 @@
   inset: 0;
   z-index: 9999;
   pointer-events: none;
-  opacity: 0.035;
+  opacity: 0.018;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-repeat: repeat;
   background-size: 180px;
@@ -595,6 +601,11 @@ html {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06);
   -webkit-backdrop-filter: blur(30px) saturate(2);
   backdrop-filter: blur(30px) saturate(2);
+}
+
+[data-theme="light"] .sv-nav-scrolled .sv-nav-inner {
+  background: rgba(248, 250, 252, 0.88);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
 /* ═══ 3D TILT CARDS ═══ */
